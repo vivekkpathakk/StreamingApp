@@ -8,14 +8,14 @@ pipeline {
     stages {
         stage('ECR Login') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                withCredentials([usernamePassword(credentialsId: '138893339858', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_URL'
                 }
             }
         }
         stage('Build & Push Frontend') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                withCredentials([usernamePassword(credentialsId: '138893339858', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     dir('frontend') {
                         sh 'docker build -t streaming-frontend .'
                         sh 'docker tag streaming-frontend:latest $ECR_URL/streaming-frontend:latest'
@@ -26,7 +26,7 @@ pipeline {
         }
         stage('Build & Push Microservices') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                withCredentials([usernamePassword(credentialsId: '138893339858', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     dir('backend') {
                         sh 'docker build -f authService/Dockerfile -t streaming-auth .'
                         sh 'docker tag streaming-auth:latest $ECR_URL/streaming-auth:latest'
@@ -49,7 +49,7 @@ pipeline {
         }
         stage('Deploy to EKS') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'aws-creds', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                withCredentials([usernamePassword(credentialsId: '138893339858', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh 'aws eks update-kubeconfig --region $AWS_REGION --name streaming-cluster-v3'
                     sh 'kubectl apply -f app-deployment.yaml'
                 }
