@@ -28,19 +28,19 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'aws-creds-v3', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     dir('backend') {
-                        sh 'docker build -f authService/Dockerfile -t streaming-auth .'
+                        sh 'docker build -t streaming-auth authService'
                         sh 'docker tag streaming-auth:latest $ECR_URL/streaming-auth:latest'
                         sh 'docker push $ECR_URL/streaming-auth:latest'
 
-                        sh 'docker build -f adminService/Dockerfile -t streaming-admin .'
+                        sh 'docker build -t streaming-admin adminService'
                         sh 'docker tag streaming-admin:latest $ECR_URL/streaming-admin:latest'
                         sh 'docker push $ECR_URL/streaming-admin:latest'
 
-                        sh 'docker build -f chatService/Dockerfile -t streaming-chat .'
+                        sh 'docker build -t streaming-chat chatService'
                         sh 'docker tag streaming-chat:latest $ECR_URL/streaming-chat:latest'
                         sh 'docker push $ECR_URL/streaming-chat:latest'
 
-                        sh 'docker build -f streamingService/Dockerfile -t streaming-service .'
+                        sh 'docker build -t streaming-service streamingService'
                         sh 'docker tag streaming-service:latest $ECR_URL/streaming-service:latest'
                         sh 'docker push $ECR_URL/streaming-service:latest'
                     }
