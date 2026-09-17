@@ -136,3 +136,150 @@ Automated tests are not yet included. Recommended smoke checks:
 ## License
 
 MIT © StreamFlix Team
+
+---
+
+# DevOps Infrastructure & EKS Deployment Specs
+
+Automated DevOps pipeline deploying a high-availability MERN streaming application to Amazon EKS using Jenkins CI/CD, AWS ECR, and CloudWatch Container Insights.
+
+## Architecture & System Flow
+
+```
++-----------------------------------------------------------------------------------+
+|                                 DEVELOPMENT PIPELINE                              |
++-----------------------------------------------------------------------------------+
+|  [ Developer ] ---> Git Push ---> [ GitHub Repo ]                                 |
+|                                         |                                         |
+|                                         v                                         |
+|                             [ Jenkins CI/CD Pipeline ]                            |
+|                                         |                                         |
+|          +------------------------------+------------------------------+          |
+|          |                              |                              |          |
+|          v                              v                              v          |
+|  ( ECR Login )               ( Build & Push Images )        ( Deploy Manifests )  |
+|                                         |                              |          |
++-----------------------------------------|------------------------------|----------+
+                                          |                              |
++-----------------------------------------|------------------------------|----------+
+|                                    AWS CLOUD                           v          |
++-----------------------------------------|-----------------------------------------+
+|                                         v                                         |
+|                            [ Amazon ECR Repositories ]                            |
+|                                                                                   |
+|  [ Amazon EKS Cluster: streaming-cluster-v3 ]                                     |
+|  +-----------------------------------------------------------------------------+  |
+|  |  +-------------------------+      +--------------------------------------+  |  |
+|  |  |   AWS Elastic LoadBal   | ---> | Frontend Service (Nginx / React Port)|  |  |
+|  |  +-------------------------+      +--------------------------------------+  |  |
+|  |                                                   |                         |  |
+|  |       +-------------------+-----------------------+-------------------+     |  |
+|  |       |                   |                       |                   |     |  |
+|  |       v                   v                       v                   v     |  |
+|  |  (Auth: 3001)       (Admin: 3003)           (Chat: 3004)     (Streaming: 3002)|  |
+|  |       |                   |                       |                   |     |  |
+|  |       +-------------------+-----------+-----------+-------------------+     |  |
+|  |                                       |                                     |  |
+|  |                                       v                                     |  |
+|  |                            (MongoDB Service: 27017)                         |  |
+|  +-----------------------------------------------------------------------------+  |
+|                                          |                                        |
+|                                          v                                        |
+|                 [ AWS CloudWatch Container Insights & Logs ]                      |
++-----------------------------------------------------------------------------------+
+```
+
+### 1. Development & CI/CD Pipeline
+- **Developer Push**: Code updates are committed and pushed to the GitHub repository (`main` branch).
+- **Jenkins Orchestration**: Jenkins automatically pulls source code and triggers the pipeline workflow.
+- **ECR Authentication**: Jenkins logs into AWS ECR using system credentials (`aws-creds-v3`).
+- **Build & Push**: Docker images for Frontend, Auth, Admin, Chat, and Streaming services are compiled, tagged, and pushed to individual AWS ECR repositories.
+- **EKS Deployment**: Jenkins configures cluster `kubeconfig` and executes `kubectl apply -f app-deployment.yaml` for zero-downtime rolling updates.
+
+### 2. AWS EKS Infrastructure (`streaming-cluster-v3`)
+- **Public Ingress Layer**: AWS Elastic Load Balancer (ELB) receives public HTTP traffic and forwards requests to the `frontend-service` (React running on Nginx, Port 80).
+- **Microservices Routing Layer**: Internal requests route to isolated Node.js services via Kubernetes ClusterIP services:
+  - **Auth Service**: Port `3001` (`auth-service`)
+  - **Streaming Service**: Port `3002` (`streaming-service`)
+  - **Admin Service**: Port `3003` (`admin-service`)
+  - **Chat Service**: Port `3004` (`chat-service`)
+- **Database Layer**: All microservices persist and retrieve data through a dedicated MongoDB service (`mongo`) bound to Port `27017`.
+
+### 3. Observability & Telemetry
+- **CloudWatch Control Plane Logging**: EKS control plane audit, API, and authenticator logs are pushed to `/aws/eks/streaming-cluster-v3/cluster`.
+- **Container Insights**: The `amazon-cloudwatch-observability` addon (Fluent Bit daemonset & CloudWatch agent) collects pod telemetry and forwards application logs to AWS CloudWatch.
+
+## Technical & Project Specifications
+- **Upstream Repository**: `https://github.com/UnpredictablePrashant/StreamingApp.git`
+- **AWS Account ID**: `138893339858` (`us-east-1`)
+- **EKS Cluster**: `streaming-cluster-v3`
+- **Container Registries (ECR)**: `streaming-frontend`, `streaming-auth`, `streaming-admin`, `streaming-chat`, `streaming-service`
+- **Jenkins Credentials ID**: `aws-creds-v3`
+- **Live Application Endpoint**: `http://a0a1f7fce9c14bfc89893bc35141a88-1356062452.us-east-1.elb.amazonaws.com`
+
+## Component Port & Service Binding
+| Component | Type | Internal Port | Service Type | EKS Service Name |
+| :--- | :--- | :--- | :--- | :--- |
+| **Database** | MongoDB 6 | `27017` | ClusterIP | `mongo` |
+| **Auth Microservice** | Node.js | `3001` | ClusterIP | `auth-service` |
+| **Admin Microservice** | Node.js | `3003` | ClusterIP | `admin-service` |
+| **Chat Microservice** | Node.js | `3004` | ClusterIP | `chat-service` |
+| **Streaming Microservice** | Node.js | `3002` | ClusterIP | `streaming-service` |
+| **Frontend Application** | React / Nginx | `80` | LoadBalancer | `frontend-service` |
+
+## CI/CD Pipeline Workflow (`Jenkinsfile`)
+1. **Declarative Checkout**: Clones latest commits from `origin/main`.
+2. **ECR Login**: Authenticates Docker daemon to AWS ECR in `us-east-1` using global `aws-creds-v3` credentials.
+3. **Build & Push Frontend**: Compiles production React static files into Nginx base image and pushes `streaming-frontend:latest` to ECR.
+4. **Build & Push Microservices**: Builds isolated Docker contexts for Auth, Admin, Chat, and Streaming services and pushes tags to ECR.
+5. **Deploy to EKS**: Updates `kubeconfig` context for `streaming-cluster-v3` and applies `app-deployment.yaml`.
+
+## Operational Verification Commands
+
+**1. Check running pods across all namespaces:**
+
+```
+$ kubectl get pods -A
+
+NAMESPACE           NAME                                                  READY   STATUS    RESTARTS   AGE
+amazon-cloudwatch    amazon-cloudwatch-observability-controller-manager-6887c87g4l2l   1/1   Running   0   12d
+amazon-cloudwatch    cloudwatch-agent-lr4df                               1/1   Running   0   12d
+amazon-cloudwatch    cloudwatch-agent-mkqmg                               1/1   Running   0   12d
+amazon-cloudwatch    fluent-bit-s58r5                                     1/1   Running   0   12d
+amazon-cloudwatch    fluent-bit-wrcfw                                     1/1   Running   0   12d
+default              admin-deployment-cbdbccff6-466dn                     1/1   Running   1 (12d ago)   12d
+default              auth-deployment-854ff764c5-gkhd8                     1/1   Running   0   12d
+default              chat-deployment-58dbb67b87-qn69j                     1/1   Running   0   12d
+default              frontend-deployment-cc65dd479-2gdvz                  1/1   Running   0   12d
+default              frontend-deployment-cc65dd479-bmw7l                  1/1   Running   0   12d
+default              mongo-deployment-7c94fcd666-wvk68                    1/1   Running   0   12d
+default              streaming-deployment-b9f8559d4-dgwfm                 1/1   Running   0   12d
+kube-system          aws-node-jnsvt                                       2/2   Running   0   14d
+kube-system          aws-node-mgv8k                                       2/2   Running   0   14d
+kube-system          coredns-7b9bfc5446-kbqk2                             1/1   Running   0   17d
+kube-system          coredns-7b9bfc5446-kwl4m                             1/1   Running   0   17d
+kube-system          kube-proxy-g89ks                                     1/1   Running   0   14d
+kube-system          kube-proxy-kwl8p                                     1/1   Running   0   14d
+```
+
+**2. Check public service load balancer endpoint:**
+
+```
+$ kubectl get svc frontend-service
+
+NAME               TYPE           CLUSTER-IP       EXTERNAL-IP                                                              PORT(S)        AGE
+frontend-service   LoadBalancer   10.100.100.144   a0a1f7fce9c14bfc89893bc35141a88-1356062452.us-east-1.elb.amazonaws.com   80:30342/TCP   12d
+```
+
+**3. Inspect CloudWatch logging agent status:**
+
+```
+$ kubectl get pods -n amazon-cloudwatch
+
+NAME                                                              READY   STATUS    RESTARTS   AGE
+amazon-cloudwatch-observability-controller-manager-6887c87g4l2l   1/1     Running   0          12d
+cloudwatch-agent-lr4df                                            1/1     Running   0          12d
+cloudwatch-agent-mkqmg                                            1/1     Running   0          12d
+fluent-bit-s58r5                                                  1/1     Running   0          12d
+fluent-bit-wrcfw                                                  1/1     Running   0          12d
+```
